@@ -96,12 +96,8 @@ function hologram.find_source(line)
         local inline_link = line:match('!%[.-%]%(.-%)')
         if inline_link then
             local source = inline_link:match('%((.+)%)')
-	    local path = fs.get_absolute_path(source)
-	    if path then
-                if fs.check_sig_PNG(path) then
-                    return path
-                else return nil end
-            else return nil end
+	    local path = fs.get_image(source)
+	    return path
         end
     end
 end

@@ -1,4 +1,8 @@
 local base64 = require('hologram.base64')
+function sleep(n)
+  os.execute("sleep " .. tonumber(n))
+end
+
 
 local terminal = {}
 local stdout = vim.loop.new_tty(1, false)
@@ -48,6 +52,20 @@ local CTRL_KEYS = {
 
     -- TODO: Animation
 }
+function tprint (tbl, indent)
+  if not indent then indent = 0 end
+  for k, v in pairs(tbl) do
+    formatting = string.rep("  ", indent) .. k .. ": "
+    if type(v) == "table" then
+      print(formatting)
+      tprint(v, indent+1)
+    elseif type(v) == 'boolean' then
+      print(formatting .. tostring(v))      
+    else
+      print(formatting .. v)
+    end
+  end
+end
 
 function terminal.send_graphics_command(keys, payload)
     if payload and string.len(payload) > 4096 then keys.more = 1 else keys.more = 0 end
@@ -60,13 +78,15 @@ function terminal.send_graphics_command(keys, payload)
     ctrl = ctrl:sub(0, -2) -- chop trailing comma
 
     if payload then
-        if keys.transmission_type ~= 'd' then
-            payload = base64.encode(payload)
-        end
+        payload = base64.encode(payload)
         payload = terminal.get_chunked(payload)
         for i=1,#payload do
             terminal.write('\x1b_G'..ctrl..';'..payload[i]..'\x1b\\')
-            if i == #payload-1 then ctrl = 'm=0' else ctrl = 'm=1' end
+            if i == #payload-1 then
+		    ctrl = 'm=0' 
+		    print(payload[i+1])
+		    error('test')
+	    else ctrl = 'm=1' end
         end
     else
         terminal.write('\x1b_G'..ctrl..'\x1b\\')
@@ -76,12 +96,19 @@ end
 -- Split into chunks of max 4096 length
 function terminal.get_chunked(str)
     local chunks = {}
+    local cap = 4096
     for i = 1,#str,4096 do
-        local chunk = str:sub(i, i + 4096 - 1):gsub('%s', '')
+	if (#str - i) < 4096 then
+	    cap = #str - i + 1
+        end
+        local chunk = str:sub(i, i + cap - 1)
         if #chunk > 0 then
             table.insert(chunks, chunk)
+	 --   print(chunk)
+--    else error('no chunk')
         end
     end
+--	error('test')
     return chunks
 end
 
