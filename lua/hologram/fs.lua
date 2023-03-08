@@ -23,7 +23,7 @@ function fs.check_sig_PNG(path)
     return sig[0]==137 and sig[1]==80
         and sig[2]==78 and sig[3]==71
         and sig[4]==13 and sig[5]==10
-        and sig[6]==26 and sig[7]==10
+        and sig[6]==26 and sig[7]==0
 end
 
 function fs.get_chunked(buf)

@@ -1,5 +1,6 @@
 local terminal = require('hologram.terminal')
 local fs = require('hologram.fs')
+local png = require('hologram.png')
 local utils = require('hologram.utils')
 local state = require('hologram.state')
 
@@ -31,15 +32,18 @@ function Image:new(source, keys)
 
     assert(type(source) == 'string', 'Image source is not a valid string')
     if keys.data_width == nil and keys.data_height == nil then
-        if source:sub(-4) == '.png' then
-            keys.data_width, keys.data_height = fs.get_dims_PNG(source)
+        if source:sub(-4) == '.png' and keys.transmission_type == 'f' then
+            keys.data_width, keys.data_height = png.path_get_dims_PNG(source)
+	elseif keys.transmission_type == 'd' then
+	    keys.data_width, keys.data_height = png.data_get_dims_PNG(source)
         end
     end
     local cols = math.ceil(keys.data_width/state.cell_size.x)
     local rows = math.ceil(keys.data_height/state.cell_size.y)
 
     keys.action = 't'
-    keys.quiet = 2
+    keys.quiet = 0
+    -- keys.quiet = 0
 
     terminal.send_graphics_command(keys, source)
 
@@ -72,7 +76,8 @@ function Image:display(row, col, buf, keys)
     keys.action = 'p'
     keys.image_id = self.transmit_keys.image_id
     keys.cursor_movement = 1
-    keys.quiet = 2
+  --  keys.quiet = 0
+    keys.quiet = 0
 
     -- fit inside buffer
     if vim.api.nvim_buf_is_valid(buf) then

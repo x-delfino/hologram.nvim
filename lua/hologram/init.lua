@@ -2,6 +2,8 @@ local hologram = {}
 local state = require('hologram.state')
 local Image = require('hologram.image')
 local fs = require('hologram.fs')
+local remote = require('hologram.remote')
+local png = require('hologram.png')
 
 function hologram.setup(opts)
     -- Create autocommands
@@ -72,7 +74,17 @@ function hologram.buf_generate_images(buf, top, bot)
     for n, line in ipairs(lines) do
         local source = hologram.find_source(line)
         if source ~= nil then
-            local img = Image:new(source, {})
+            local keys = {}
+	    if remote.is_url(source) then
+		source = remote.download_file(source)
+		if png.check_data_PNG(source) then
+        	    keys = { transmission_type = 'd' }
+	        else return nil end
+	    else
+		source = fs.get_absolute_path(source)
+		if not png.check_path_PNG(source) then return nil end
+	    end
+            local img = Image:new(source, keys)
             img:display(top+n, 0, buf, {})
         end
     end
@@ -96,12 +108,13 @@ function hologram.find_source(line)
         local inline_link = line:match('!%[.-%]%(.-%)')
         if inline_link then
             local source = inline_link:match('%((.+)%)')
-	    local path = fs.get_absolute_path(source)
-	    if path then
-                if fs.check_sig_PNG(path) then
-                    return path
-                else return nil end
-            else return nil end
+	    return source
+--	    local path = fs.get_absolute_path(source)
+--	    if path then
+--                if fs.check_sig_PNG(path) then
+--                    return path
+--                else return nil end
+--            else return nil end
         end
     end
 end

@@ -1,7 +1,6 @@
 local base64 = require('hologram.base64')
 
 local terminal = {}
-local stdout = vim.loop.new_tty(1, false)
 
 --[[
      All Kitty graphics commands are of the form:
@@ -60,14 +59,17 @@ function terminal.send_graphics_command(keys, payload)
     ctrl = ctrl:sub(0, -2) -- chop trailing comma
 
     if payload then
-        if keys.transmission_type ~= 'd' then
+--        if keys.transmission_type ~= 'd' then
             payload = base64.encode(payload)
-        end
+--        end
         payload = terminal.get_chunked(payload)
+	local encoded_payload = ''
         for i=1,#payload do
-            terminal.write('\x1b_G'..ctrl..';'..payload[i]..'\x1b\\')
+	    -- terminal.write('\x1b_G'..ctrl..';'..payload[i]..'\x1b\\')
+	    encoded_payload = encoded_payload .. '\x1b_G'..ctrl..';'..payload[i]..'\x1b\\'
             if i == #payload-1 then ctrl = 'm=0' else ctrl = 'm=1' end
         end
+        terminal.write(encoded_payload)
     else
         terminal.write('\x1b_G'..ctrl..'\x1b\\')
     end
@@ -76,8 +78,14 @@ end
 -- Split into chunks of max 4096 length
 function terminal.get_chunked(str)
     local chunks = {}
+	-- #str 5096
+    local cap = 4096
     for i = 1,#str,4096 do
-        local chunk = str:sub(i, i + 4096 - 1):gsub('%s', '')
+    	if ((#str - i) + 1) < 4096 then
+	    cap = #str - i
+        end
+--        local chunk = str:sub(i, i + cap - 1):gsub('%s', '') -- the gsub segfaulted
+        local chunk = str:sub(i, i + cap - 1)
         if #chunk > 0 then
             table.insert(chunks, chunk)
         end
@@ -96,7 +104,17 @@ end
 
 -- glob together writes to stdout
 terminal.write = vim.schedule_wrap(function(data)
+    local stdin = vim.loop.new_tty(0, true)
+    local stdout = vim.loop.new_tty(1, false)
     stdout:write(data)
+    stdin:read_start(function (err, data)
+        assert(not err, err)
+        if data then
+        else
+          stdin:close()
+          stdout:close()
+        end
+    end)
 end)
 
 return terminal
