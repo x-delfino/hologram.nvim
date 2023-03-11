@@ -184,22 +184,25 @@ function Image:set_vpad(buf, row, cols, rows)
         return
     end
 
+    -- set padding row
     local text = string.rep(' ', cols)
     local filler = {}
+    -- set padding block
     for i=0,rows-1 do
         filler[#filler+1] = {{text, ''}}
     end
 
+    -- set extmark with padding at start of row, matching image id
     vim.api.nvim_buf_set_extmark(buf, vim.g.hologram_extmark_ns, row-1, 0, {
         id = self.transmit_keys.image_id,
         virt_lines = filler,
-        --virt_lines_leftcol = true,
     })
 
     self.vpad = {row=row, cols=cols, rows=rows}
 end
 
 function Image:remove_vpad(buf)
+    -- delete extamark inc padding
     if self.vpad ~= nil then
         vim.api.nvim_buf_del_extmark(buf, vim.g.hologram_extmark_ns, self.transmit_keys.image_id)
         self.vpad = nil

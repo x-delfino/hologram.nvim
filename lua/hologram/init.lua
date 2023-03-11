@@ -14,38 +14,61 @@ function hologram.setup(opts)
     state.update_cell_size()
 
     if opts.auto_display == true then
+
+	local buf_ref = {}
+	-- rerender on buffer changes
         vim.api.nvim_set_decoration_provider(vim.g.hologram_extmark_ns, {
             on_win = function(_, win, buf, top, bot)
-                vim.schedule(function() hologram.buf_render_images(buf, top, bot) end)
+		if not buf_ref[win] then buf_ref[win] = {} end
+		if not buf_ref[win][buf] then buf_ref[win][buf] = {} end
+		if top ~= buf_ref[win][buf]['top'] or bot ~= buf_ref[win][buf]['bot'] then
+                    vim.schedule(function() hologram.buf_render_images(buf, top, bot) end)
+		    buf_ref[win][buf]['top'] = top
+		    buf_ref[win][buf]['bot'] = bot
+	        end
             end
         })
 
+	-- cleanup when leaving buffer
         vim.api.nvim_create_autocmd({'BufWinLeave'}, {
             callback = function(au)
                 hologram.buf_delete_images(au.buf, 0, -1)
             end,
         })
 
+	-- initialise when entering buffer
         vim.api.nvim_create_autocmd({'BufWinEnter'}, {
             callback = function(au)
+		-- attach to open buffer
                 vim.api.nvim_buf_attach(au.buf, false, {
+		    -- reload images on modified lines
                     on_lines = function(_, buf, tick, first, last)
                         hologram.buf_delete_images(buf, first, last)
                         hologram.buf_generate_images(buf, first, last)
                     end,
+		    -- cleanup images
                     on_detach = function(_, buf)
                         hologram.buf_delete_images(buf, 0, -1)
                     end
                 })
+        	-- load images
                 hologram.buf_generate_images(au.buf, 0, -1)
             end
         })
+
+	vim.api.nvim_create_autocmd({'WinScrolled'}, {
+	    callback = function(au)
+	        error(vim.inspect(au))
+	    end
+	})
     end
 end
 
 local prev_ids = {}
 
+-- reload all images
 function hologram.buf_render_images(buf, top, bot)
+    -- get marked areas
     local exts = vim.api.nvim_buf_get_extmarks(buf,
         vim.g.hologram_extmark_ns,
         {math.max(top-1, 0), 0}, 
@@ -53,12 +76,14 @@ function hologram.buf_render_images(buf, top, bot)
     {})
 
     local curr_ids = {}
+    -- display images
     for _, ext in ipairs(exts) do
         local id, row, col = unpack(ext)
         Image.instances[id]:display(row+1, 0, buf, {})
         curr_ids[#curr_ids+1] = id
     end
 
+    -- remove previous
     if prev_ids[buf] ~= nil then
         for _, id in ipairs(prev_ids[buf]) do
             if not vim.tbl_contains(curr_ids, id) then
@@ -109,12 +134,6 @@ function hologram.find_source(line)
         if inline_link then
             local source = inline_link:match('%((.+)%)')
 	    return source
---	    local path = fs.get_absolute_path(source)
---	    if path then
---                if fs.check_sig_PNG(path) then
---                    return path
---                else return nil end
---            else return nil end
         end
     end
 end

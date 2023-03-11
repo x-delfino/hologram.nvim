@@ -152,7 +152,7 @@ terminal.readwrite = vim.schedule_wrap(function(data)
 	    else resp = read end 
         end
     --stop reading input when end of reply with 0.3s timeout
-    until resp:match('.*\x1b\\') or (socket.gettime()*1000 - time) > 300
+    until resp:match('.*\x1b\\') or (socket.gettime()*1000 - time) > 200
     return terminal._parse_graphics_response(resp)
 end)
 
