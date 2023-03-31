@@ -1,9 +1,14 @@
 local hologram = {}
 local state = require('hologram.state')
-local Image = require('hologram.image')
+local image_store = require('hologram.image')
+local image_handler = require('hologram.image_handler')
 local fs = require('hologram.fs')
+local log = require('hologram.log')
 local remote = require('hologram.remote')
 local png = require('hologram.png')
+
+local handler = image_handler:new{}
+ImageStore = image_store:new{}
 
 function hologram.setup(opts)
     -- Create autocommands
@@ -17,115 +22,73 @@ function hologram.setup(opts)
 
 	local buf_ref = {}
 	-- rerender on buffer changes
-        vim.api.nvim_set_decoration_provider(vim.g.hologram_extmark_ns, {
-            on_win = function(_, win, buf, top, bot)
-		if not buf_ref[win] then buf_ref[win] = {} end
-		if not buf_ref[win][buf] then buf_ref[win][buf] = {} end
-		if top ~= buf_ref[win][buf]['top'] or bot ~= buf_ref[win][buf]['bot'] then
-                    vim.schedule(function() hologram.buf_render_images(buf, top, bot) end)
-		    buf_ref[win][buf]['top'] = top
-		    buf_ref[win][buf]['bot'] = bot
-	        end
-            end
-        })
-
-	-- cleanup when leaving buffer
-        vim.api.nvim_create_autocmd({'BufWinLeave'}, {
-            callback = function(au)
-                hologram.buf_delete_images(au.buf, 0, -1)
-            end,
-        })
+--        vim.api.nvim_set_decoration_provider(vim.g.hologram_extmark_ns, {
+--            on_win = function(_, win, buf, top, bot)
+--		if not buf_ref[win] then buf_ref[win] = {} end
+--		if not buf_ref[win][buf] then buf_ref[win][buf] = {} end
+--		if top ~= buf_ref[win][buf]['top'] or bot ~= buf_ref[win][buf]['bot'] then
+--                    vim.schedule(function() hologram.buf_render_images(buf, top, bot) end)
+--		    buf_ref[win][buf]['top'] = top
+--		    buf_ref[win][buf]['bot'] = bot
+--	        end
+--            end
+--        })
+--
+--	-- cleanup when leaving buffer
+--        vim.api.nvim_create_autocmd({'BufWinLeave'}, {
+--            callback = function(au)
+--                hologram.buf_delete_images(au.buf, 0, -1)
+--            end,
+--        })
 
 	-- initialise when entering buffer
         vim.api.nvim_create_autocmd({'BufWinEnter'}, {
             callback = function(au)
-		-- attach to open buffer
+--		-- attach to open buffer
                 vim.api.nvim_buf_attach(au.buf, false, {
-		    -- reload images on modified lines
-                    on_lines = function(_, buf, tick, first, last)
-                        hologram.buf_delete_images(buf, first, last)
-                        hologram.buf_generate_images(buf, first, last)
+--		    -- reload images on modified lines
+                    on_lines = function(_, buf, _, first, last)
+         	        hologram.buf_load_images(buf, first, last)
+			handler:update_placeholders(buf)
+                        handler:update_placements()
                     end,
-		    -- cleanup images
-                    on_detach = function(_, buf)
-                        hologram.buf_delete_images(buf, 0, -1)
-                    end
+--		    -- cleanup images
+--                    on_detach = function(_, buf)
+--                        hologram.buf_delete_images(buf, 0, -1)
+--                    end
                 })
-        	-- load images
-                hologram.buf_generate_images(au.buf, 0, -1)
+                if(hologram.buf_load_images(au.buf, 0, -1)) then
+                    handler:update_placements()
+	        end
             end
         })
 
-	vim.api.nvim_create_autocmd({'WinScrolled'}, {
-	    callback = function(au)
-	        error(vim.inspect(au))
-	    end
-	})
-    end
-end
-
-local prev_ids = {}
-
--- reload all images
-function hologram.buf_render_images(buf, top, bot)
-    -- get marked areas
-    local exts = vim.api.nvim_buf_get_extmarks(buf,
-        vim.g.hologram_extmark_ns,
-        {math.max(top-1, 0), 0}, 
-        {bot-2, -1},
-    {})
-
-    local curr_ids = {}
-    -- display images
-    for _, ext in ipairs(exts) do
-        local id, row, col = unpack(ext)
-        Image.instances[id]:display(row+1, 0, buf, {})
-        curr_ids[#curr_ids+1] = id
-    end
-
-    -- remove previous
-    if prev_ids[buf] ~= nil then
-        for _, id in ipairs(prev_ids[buf]) do
-            if not vim.tbl_contains(curr_ids, id) then
-                Image.instances[id]:delete(buf, {})
+        vim.api.nvim_set_decoration_provider(vim.g.hologram_extmark_ns, {
+            on_win = function(_)
+                handler:update_placements()
             end
-        end
+        })
+
     end
-    prev_ids[buf] = curr_ids
 end
 
-function hologram.buf_generate_images(buf, top, bot)
+function hologram.buf_load_images(buf, top, bot)
+    local found = false
     local lines = vim.api.nvim_buf_get_lines(buf, top, bot, false)
     for n, line in ipairs(lines) do
         local source = hologram.find_source(line)
         if source ~= nil then
-            local keys = {}
-	    if remote.is_url(source) then
-		source = remote.download_file(source)
-		if png.check_data_PNG(source) then
-        	    keys = { transmission_type = 'd' }
-	        else return nil end
-	    else
-		source = fs.get_absolute_path(source)
-		if not png.check_path_PNG(source) then return nil end
-	    end
-            local img = Image:new(source, keys)
-            img:display(top+n, 0, buf, {})
+	    if not png.check_path_PNG(source) then return nil end
+            source = fs.get_absolute_path(source)
+            local image_id = ImageStore:load(source, {})
+
+	    -- load buffer placement with placeholder
+	    local placeholder_id = handler:add_placeholder(buf, ImageStore.images[image_id], top + n, 0)
+	    handler.placeholders[placeholder_id]:show_placeholder()
+	    found = true
         end
     end
-end
-
-function hologram.buf_delete_images(buf, top, bot)
-    local exts = vim.api.nvim_buf_get_extmarks(buf,
-        vim.g.hologram_extmark_ns,
-        {top, 0},
-        {bot, -1},
-    {})
-
-    for _, ext in ipairs(exts) do
-        local id, _, _ = unpack(ext)
-        Image.instances[id]:delete(buf, {free=true})
-    end
+    return found
 end
 
 function hologram.find_source(line)

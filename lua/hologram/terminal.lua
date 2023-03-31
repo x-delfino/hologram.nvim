@@ -16,6 +16,13 @@ local terminal = {}
      (*) Lua5.1/LuaJIT accepts escape seq. in dec or hex form (not octal).
 ]]--
 
+local ESC_STR = "<ESC>"
+local ESC_CODE = '\x1b'
+local START_CODE = ESC_CODE .. '_G'
+local START_STR = ESC_STR .. '_G'
+local END_STR = ESC_STR .. '|'
+local END_CODE = ESC_CODE .. '\\'
+
 local CTRL_KEYS = {
     -- General
     action = 'a',
@@ -60,11 +67,11 @@ end
 
 
 function terminal._parse_graphics_response(resp)
-    if resp:match('\x1b_G.*\x1b\\') then
+    if resp:match(START_CODE .. '.*' .. END_CODE) then
 	local delim = resp:find(';')
 	local message = resp:sub(delim+1, -3)
 	local keyref = terminal._table_invert(CTRL_KEYS)
-	local keystring = resp:sub(5, delim)
+	local keystring = resp:sub(4, delim)
 	local keys = {}
 	-- split by comma (this needs cleaning up)
 	for key in keystring:gmatch('([^,]+)') do
@@ -75,32 +82,34 @@ function terminal._parse_graphics_response(resp)
 	    keys[k] = key:sub(keydelim+1)
         end
 	log.debug(keys)
-	log.info('message: ' .. message)
+	log.info('response: ' .. message)
 	return message, keys
     else return nil end
 end
 
 
-function terminal.send_graphics_command(keys, payload)
+function terminal.send_graphics_command(keys, payload, read)
+    --log.info('sending kitty command')
     if payload and string.len(payload) > 4096 then keys.more = 1 else keys.more = 0 end
-    local ctrl = ''
-    for k, v in pairs(keys) do
-        if v ~= nil then
-            ctrl = ctrl..CTRL_KEYS[k]..'='..v..','
-        end
-    end
-    ctrl = ctrl:sub(0, -2) -- chop trailing comma
+    local ctrl = keys:serialize()
+    -- log.debug('  ctrl string: ', ctrl)
+    local encoded_payload = ''
     if payload then
+   --     log.debug('  payload: ',  payload)
         payload = base64.encode(payload)
         payload = terminal.get_chunked(payload)
-	local encoded_payload = ''
+	encoded_payload = ''
         for i=1,#payload do
-	    encoded_payload = encoded_payload .. '\x1b_G'..ctrl..';'..payload[i]..'\x1b\\'
+	    encoded_payload = encoded_payload .. START_CODE ..ctrl..';'..payload[i].. END_CODE
             if i == #payload-1 then ctrl = 'm=0' else ctrl = 'm=1' end
         end
-        terminal.readwrite(encoded_payload)
     else
-        terminal.readwrite('\x1b_G'..ctrl..'\x1b\\')
+        encoded_payload = START_CODE ..ctrl.. END_CODE
+    end
+    if read and keys.quiet <= 1 then
+        return terminal.readwrite(encoded_payload)
+    else
+        return terminal.write(encoded_payload)
     end
 end
 
@@ -122,38 +131,117 @@ function terminal.get_chunked(str)
     return chunks
 end
 
+
+terminal.write2 = vim.schedule_wrap(function(data)
+    io.stdout:write(data)
+    io.stdout:flush()
+end)
+
+function terminal.write (data)
+    io.stdout:write(data)
+    io.stdout:flush()
+end
+
+function terminal.readwrite2 (data)
+--    local time = socket.gettime()*1000
+--    local stdin = vim.loop.new_tty(0, true)
+--    local stdout = vim.loop.new_tty(1, false)
+--    stdout:write(data)
+--    stdin:read_start(function (err, read)
+--      assert(not err, err)
+--      if read then
+--        stdin:close()
+--	stdin:read_stop()
+--      else
+--        stdin:close()
+--        stdout:close()
+--      end
+--    end)
+--
+
+    --for milliseconds
+    local time = socket.gettime()*1000
+    local resp = nil
+    io.stdout:write(data)
+    resp = terminal.read()
+    --read response
+    -- while not resp:match(".*" .. START_CODE .. ".*") do --and not ((socket.gettime()*1000 - time) > 500) do
+    --     local read = io.stdin:read(1)
+    --     if read then
+    --         resp = resp .. read
+    --     end
+    -- end
+    -- local extra = resp:gsub(START_CODE .. ".*", "")
+    -- io.stdout:write(extra)
+    -- resp = resp:gsub(extra, "")
+--    while not resp:match('.*' .. END_CODE)  and not ((socket.gettime()*1000 - time) > 500) do
+--    while not resp:match('.*\\') do -- and not ((socket.gettime()*1000 - time) > 500) do
+--        local read = io.stdin:read(1)
+--        if read then
+--            resp = resp .. read
+--        end
+--    end
+ --       log.debug(resp2:gsub(ESC_CODE, ESC_STR))
+--    io.stdin:close()
+    io.stdout:flush()
+    if resp then return terminal._parse_graphics_response(resp) else return false end
+end
+
+function terminal.readwrite (data)
+--terminal.readwrite = vim.schedule_wrap(function(data)
+    local time = socket.gettime()*1000
+    io.stdout:flush()
+    io.stdout:write(data)
+    --read response
+    local resp = ''
+    while not resp:match(".*" .. END_CODE) and not ((socket.gettime()*1000 - time) > 500) do
+        local read = io.stdin:read(1)
+        if read then
+            resp = resp .. read
+        end
+    end
+    if resp then return terminal._parse_graphics_response(resp) else return false end
+end
+
+function terminal.read()
+    local time = socket.gettime()*1000
+    local start = ''
+    local resp = ''
+    while resp == '' and not ((socket.gettime()*1000 - time) > 1000) do
+        local time2 = socket.gettime()*1000
+        while start ~= ESC_CODE and not ((socket.gettime()*1000 - time2) > 1000) do
+            if start then io.stdout:write(start) end
+            start = io.stdin:read(1)
+        end
+        if start == ESC_CODE then
+            time2 = socket.gettime()*1000
+            resp = start
+--            while resp == '' and not ((socket.gettime()*1000 - time) > 500) do
+                while not resp:match(START_CODE .. '.*' .. END_CODE)  and not ((socket.gettime()*1000 - time2) > 1000) do
+                    local read = io.stdin:read(1)
+                    if read then
+                        resp = resp .. read
+                    end
+                end
+--                resp = (ESC_CODE .. resp):match(START_CODE .. '.*' .. END_CODE)
+--              if resp == nil then resp = '' end
+--            end
+            io.stdin:close()
+            return resp
+        end
+    end
+end
+
 function terminal.move_cursor(row, col)
-    terminal.write('\x1b[s')
-    terminal.write('\x1b['..row..':'..col..'H')
+--    terminal.write('\x1b[s')
+    --terminal.write(ESC_CODE..' 7')
+    terminal.write(ESC_CODE..'[s')
+    terminal.write(ESC_CODE..'['..row..';'..col..'H')
 end
 
 function terminal.restore_cursor()
-    terminal.write('\x1b[u')
+    --terminal.write(ESC_CODE..' 8')
+    terminal.write(ESC_CODE..'[u')
 end
-
-terminal.write = vim.schedule_wrap(function(data)
-    io.stdout:write(data)
-    io.stdout:flush()
-end)
-
--- glob together writes to stdout
-terminal.readwrite = vim.schedule_wrap(function(data)
-    io.stdout:write(data)
-    io.stdout:flush()
-    --for milliseconds
-    local time = socket.gettime()*1000
-    --read response
-    local resp = " "
-    repeat
-	local read = io.stdin:read(1)
-	if read then
-	    if resp then
-                resp = resp .. read
-	    else resp = read end 
-        end
-    --stop reading input when end of reply with 0.3s timeout
-    until resp:match('.*\x1b\\') or (socket.gettime()*1000 - time) > 200
-    return terminal._parse_graphics_response(resp)
-end)
 
 return terminal
