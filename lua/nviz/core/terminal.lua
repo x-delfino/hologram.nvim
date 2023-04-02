@@ -1,6 +1,6 @@
-local base64 = require('hologram.base64')
+local base64 = require('nviz.utils.base64')
 local socket = require("socket")
-local log = require('hologram.log')
+local log = require('nviz.utils.log')
 
 local terminal = {}
 
@@ -81,8 +81,8 @@ function terminal._parse_graphics_response(resp)
 	    if ref then k = ref end
 	    keys[k] = key:sub(keydelim+1)
         end
-	log.debug(keys)
-	log.info('response: ' .. message)
+	--log.debug(keys)
+	--log.info('response: ' .. message)
 	return message, keys
     else return nil end
 end
@@ -95,7 +95,7 @@ function terminal.send_graphics_command(keys, payload, read)
     -- log.debug('  ctrl string: ', ctrl)
     local encoded_payload = ''
     if payload then
-   --     log.debug('  payload: ',  payload)
+    --    log.debug('  payload: ',  payload)
         payload = base64.encode(payload)
         payload = terminal.get_chunked(payload)
 	encoded_payload = ''

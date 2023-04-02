@@ -1,6 +1,21 @@
 local ffi = require('ffi')
-local base64 = require('hologram.base64')
+local log = require('nviz.utils.log')
 local fs = {}
+CacheDir = vim.fn.stdpath('cache') .. '/nviz/'
+
+function fs.init_tmp_dir()
+    local cache_dir = vim.loop.fs_stat(CacheDir)
+    if not cache_dir then
+        vim.loop.fs_mkdir(CacheDir, 16832)
+    end
+end
+
+function fs.write_tmp_file(template, data)
+    local fd, fn = assert(vim.loop.fs_mkstemp(template))
+    vim.loop.fs_write(fd, data)
+    assert(vim.loop.fs_close(fd))
+    return fn
+end
 
 function fs.get_dims_PNG(path)
     local fd = assert(vim.loop.fs_open(path, 'r', 438))
@@ -44,14 +59,12 @@ function fs.bytes2int(bufp)
 end
 
 function fs.get_absolute_path(path)
-    if fs._is_root_path(path) then
-        return path
-    else
+    if not fs._is_root_path(path) then
         local folder_path = vim.fn.expand("%:p:h")
 	local eventual_path = folder_path .. "/" .. path
-        local absolute_path = vim.loop.fs_realpath(eventual_path, nil)
-        return absolute_path
+        path = vim.loop.fs_realpath(eventual_path, nil)
     end
+    if fs._is_readable(path) then return path else return nil end
 end
 
 function fs._is_root_path(path)
@@ -62,5 +75,11 @@ function fs._is_root_path(path)
       return false
     end
 end
+
+function fs._is_readable(path)
+   local f=io.open(path,"r")
+   if f~=nil then io.close(f) return true else return false end
+end
+
 
 return fs

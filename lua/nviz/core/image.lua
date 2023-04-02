@@ -1,15 +1,8 @@
-local terminal = require('hologram.terminal')
-local png = require('hologram.png')
-local state = require('hologram.state')
-local transmit_keys, _, _ = require('hologram.control') ()
-
-
-
---function transmit_keys:new(k)
---    setmetatable(k, self)
---    self.__index = self
---    return k
---end
+local terminal = require('nviz.core.terminal')
+local log = require('nviz.utils.log')
+local png = require('nviz.handlers.image.png')
+local state = require('nviz.utils.state')
+local transmit_keys, _, _ = require('nviz.handlers.terminal.control') ()
 
 -- IMAGE
 local image = {
@@ -40,7 +33,7 @@ function image:load(source, keys)
     assert(type(source) == 'string', 'Image source is not a valid string')
     local img = image:new{source = source}
     if keys.data_width == nil and keys.data_height == nil then
-        if source:sub(-4) == '.png' and keys.transmission_type == 'f' then
+        if keys.transmission_type == 'f' then
             keys.data_width, keys.data_height = png.path_get_dims_PNG(source)
 	elseif keys.transmission_type == 'd' then
 	    keys.data_width, keys.data_height = png.data_get_dims_PNG(source)

@@ -1,4 +1,5 @@
 local http = require("socket.http")
+local fs = require("nviz.utils.fs")
 
 local remote = {}
 
@@ -12,9 +13,10 @@ function remote.is_url(path)
 end
 
 function remote.download_file(url)
+    fs.init_tmp_dir()
     local body, code = http.request(url)
     if not body then error(code) end
-    return body
+    return fs.write_tmp_file(CacheDir .. '/file_XXXXXX', body)
 end
 
 return remote
