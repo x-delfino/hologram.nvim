@@ -1,13 +1,33 @@
 local ffi = require('ffi')
 local log = require('nviz.utils.log')
 local fs = {}
-CacheDir = vim.fn.stdpath('cache') .. '/nviz/'
 
 function fs.init_tmp_dir()
-    local cache_dir = vim.loop.fs_stat(CacheDir)
+    local cache_dir = vim.loop.fs_stat(Settings.cache_dir)
     if not cache_dir then
-        vim.loop.fs_mkdir(CacheDir, 16832)
+        vim.loop.fs_mkdir(Settings.cache_dir, 16832)
     end
+end
+
+function fs.rm_tmp_dir()
+    fs.rm_dir(Settings.cache_dir)
+end
+
+function fs.rm_dir(path)
+    local dir_contents = vim.loop.fs_scandir(path)
+    if dir_contents then repeat
+        local item_path, item_type = vim.loop.fs_scandir_next(dir_contents)
+	if item_path then
+            log.debug(item_path, item_type)
+	    local item_fullpath = fs.get_absolute_path(path .. '' .. item_path)
+            if item_type == 'file' then
+    	        vim.loop.fs_unlink(item_fullpath)
+            elseif item_type == 'directory' then
+    	        fs.rm_dir(item_fullpath)
+		vim.loop.fs_rmdir(item_fullpath)
+            end
+        end
+    until not item_path end
 end
 
 function fs.write_tmp_file(template, data)

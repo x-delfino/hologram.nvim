@@ -1,4 +1,5 @@
 local nviz = {}
+local settings = require('nviz.utils.settings')
 local state = require('nviz.utils.state')
 local image_store = require('nviz.core.image')
 local image_handler = require('nviz.core.image_handler')
@@ -6,144 +7,102 @@ local fs = require('nviz.utils.fs')
 local log = require('nviz.utils.log')
 local remote = require('nviz.utils.remote')
 local png = require('nviz.handlers.image.png')
+local core_handler = require('nviz.handlers.core')
+local md_source_handler = require('nviz.handlers.source.markdown')
+local inline_holder_handler = require('nviz.handlers.holder.inline')
+local float_holder_handler = require('nviz.handlers.holder.float')
+local png_image_handler = require('nviz.handlers.image.png')
+local http_data_handler = require('nviz.handlers.data.http')
+local file_data_handler = require('nviz.handlers.data.file')
+local kitty_terminal_handler = require('nviz.handlers.terminal.kitty')
+
 require('nviz.core.command')
 
 ImageHandler = image_handler:new{}
 ImageStore = image_store:new{}
-
-DisplayedSign = '\xE2\x97\x89'
-HiddenSign = '-'
+CoreHandler = core_handler:new{}
 
 -- vim.api.nvim_set_keymap('n', '<Esc>_G', 'i', {} )
+Settings = settings
 
 
-local image_source = {
-    buf = nil,
-    start_row = nil,
-    start_col = nil,
-    end_row = nil,
-    end_col = nil,
-    source_type = nil,
-    hash = nil,
-    caption = nil,
-    image_id = nil,
-}
 
-function image_source:new (s)
-  setmetatable(s, self)
-  self.__index = self
-  if not s.end_row then s.end_row = s.start_row end
-  if not s.end_col then s.end_col = s.start_col end
-  return s
-end
-
-function image_source:load_image()
-    self.image_id = ImageStore:load(self:get_source(), {})
-end
-
-local md_source = image_source:new{}
-
-function md_source:get_source()
-    local line = vim.api.nvim_buf_get_lines(self.buf, self.start_row-1, self.start_row, true)[1]
-    local source = nil
-    local path = line:sub(self.start_col, self.end_col+1):match('%((.+)%)')
-    if remote.is_url(path) then
-	self.source_type = 'url'
-	source = remote.download_file(path)
-    else
-        source = fs.get_absolute_path(path)
-	self.source_type = 'file'
-    end
-    return source
-end
-
-function nviz.buf_image_finder(find_func, buf, top, bot)
-    local sources = find_func(buf, top, bot)
-    return sources
-end
-
-function nviz.buf_mark_images(buf, top, bot)
-    local image_sources = nviz.buf_image_finder(nviz.markdown_finder, buf, top, bot)
-    local existing_marks = ImageHandler:get_marks(buf, top, bot)
-    local placeholder_ids = {}
-    for i, source in pairs(image_sources) do
-        placeholder_ids[i] = ImageHandler:add_placeholder(source)
-    end
-    if existing_marks then
-        for _, mark in ipairs(existing_marks) do
-            local keep = false
-            for _, id in ipairs(placeholder_ids) do
-                if mark[1] == id then keep = true end
-            end
-            if not keep then ImageHandler:remove_placeholder(buf, mark[1]) end
-        end
-    end
-end
-
-function nviz.markdown_finder(buf, top, bot)
-    local lines = vim.api.nvim_buf_get_lines(buf, top, bot, false)
-    local sources = {}
-    for n, line in ipairs(lines) do
-	local start_col, end_col = line:find('!%[.-%]%(.-%)')
-	if start_col then
-	    local image_reference = line:sub(start_col, end_col)
-	    local caption, _ = image_reference:match('!%[(.-)%]%((.-)%)')
-	    if caption == "" then caption = nil end
-
-            sources[n] = md_source:new{
-                buf = buf,
-                start_row = top + n,
-                start_col = start_col,
-                end_col = end_col,
-    	        hash = vim.fn.sha256(image_reference),
-		caption = caption
-            }
-        end
-    end
-    return sources
-end
 
 
 function nviz.setup(opts)
-    -- Create autocommands
---    local augroup = vim.api.nvim_create_augroup('Hologram', {clear = false})
-
-    vim.g.nviz_extmark_ns = vim.api.nvim_create_namespace('nviz_extmark')
+    CoreHandler:add_terminal_handler(kitty_terminal_handler)
+    CoreHandler:add_image_handler(png_image_handler)
+    CoreHandler:add_data_handler(file_data_handler)
+    CoreHandler:add_data_handler(http_data_handler)
 
     state.update_cell_size()
+    vim.api.nvim_create_autocmd({'BufRead'}, {
+	callback = function(ev)
+	    CoreHandler:add_buffer_handler(ev.buf)
+            CoreHandler:add_source_handler(ev.buf, md_source_handler)
+--	    CoreHandler:add_holder_handler(ev.buf, inline_holder_handler)
+	    CoreHandler:add_holder_handler(ev.buf, float_holder_handler)
+	    CoreHandler:gather_and_load_sources(ev.buf, 0, -1)
+--	    CoreHandler:gather_and_load_sources(ev.buf, 0, -1)
+--	    local buffer_handler = CoreHandler.buffer_handlers[ev.buf]
+--	    if buffer_handler:gather_sources(0, -1) then
+--	    end
+        end
+    })
+    local stored_source = nil
+    vim.api.nvim_create_autocmd({'CursorMoved', 'CursorHoldI'}, {
+	callback = function(ev)
+            local win = vim.api.nvim_tabpage_get_win(0)
+	    local cursor = vim.api.nvim_win_get_cursor(win)
+	    local buffer_handler = CoreHandler.buffer_handlers[ev.buf]
+--	    CoreHandler:win_hide_handler_holders(win, 'float')
+	    local matched_source = buffer_handler:find_source_block_match({
+		    start_row=cursor[1],
+		    start_col=cursor[2],
+	    })
 
-    if opts.sign_text == true then
-	if opts.sign_text_displayed then DisplayedSign = opts.sign_text_displayed end
-	if opts.sign_text_hidden then HiddenSign = opts.sign_text_hidden end
-    else HiddenSign, DisplayedSign = nil, nil end
+	    if matched_source ~= stored_source and stored_source ~= nil then
+	        local holder = buffer_handler:get_holder_by_source_id(stored_source.source_id)
+    	        CoreHandler:win_hide_holder_by_id(win, holder.holder_id)
+	    end
 
-    if opts.auto_display == true then
-
-	-- initialise when entering buffer
-        vim.api.nvim_create_autocmd({'BufWinEnter'}, {
-            callback = function(au)
---		-- attach to open buffer
-                vim.api.nvim_buf_attach(au.buf, false, {
---		    -- reload images on modified lines
-                    on_lines = vim.schedule_wrap(function(_, buf, _, first, last)
-                        ImageHandler:reload_buf_positions(buf)
-	                nviz.buf_mark_images(buf, first, last+1)
-                    end),
---		    -- cleanup images
---                    on_detach = function(_, buf)
---                        nviz.buf_delete_images(buf, 0, -1)
---                    end
-                })
-	        nviz.buf_mark_images(au.buf, 0, -1)
-            end
-        })
-
-        vim.api.nvim_set_decoration_provider(vim.g.nviz_extmark_ns, {
-            on_win = function(_)
-	        ImageHandler:update_placements()
-            end
-        })
-    end
+	    if matched_source then
+	        local holder = buffer_handler:get_holder_by_source_id(matched_source.source_id)
+	        CoreHandler:win_show_holder_image(win, holder.holder_id)
+		stored_source = matched_source
+	    end
+        end
+    })
 end
+
+    -- if Settings.auto_display == true then
+
+    --     -- initialise when entering buffer
+    --     vim.api.nvim_create_autocmd({'BufWinEnter'}, {
+    --         callback = function(au)
+--  --     	-- attach to open buffer
+    --             vim.api.nvim_buf_attach(au.buf, false, {
+--  --     	    -- reload images on modified lines
+    --                 on_lines = vim.schedule_wrap(function(_, buf, _, first, last)
+    --                     ImageHandler:reload_buf_positions(buf)
+    --                     nviz.buf_mark_images(buf, first, last+1)
+    --                 end),
+    --             })
+    --             nviz.buf_mark_images(au.buf, 0, -1)
+    --         end
+    --     })
+    --     vim.api.nvim_create_autocmd({'VimLeavePre'}, {
+    --         callback = function(_)
+    --     	fs.rm_tmp_dir()
+    --     end
+    --     })
+
+    --     vim.api.nvim_set_decoration_provider(Settings.extmark_ns, {
+    --         on_win = function(_)
+    --             ImageHandler:update_placements()
+    --         end
+    --     })
+    -- end
+--end
 
 return nviz

@@ -16,7 +16,7 @@ function remote.download_file(url)
     fs.init_tmp_dir()
     local body, code = http.request(url)
     if not body then error(code) end
-    return fs.write_tmp_file(CacheDir .. '/file_XXXXXX', body)
+    return fs.write_tmp_file(Settings.cache_dir .. '/file_XXXXXX', body)
 end
 
 return remote

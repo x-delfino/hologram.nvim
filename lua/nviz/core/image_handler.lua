@@ -12,7 +12,8 @@ local image_placement = {
     row = 0,
     col = 0,
     display_keys = nil,
-    extra_padding = nil
+    extra_padding = nil,
+    y_padding = nil
 }
 
 function image_placement:new (placement, keys)
@@ -42,11 +43,12 @@ function image_placement:new (placement, keys)
     if placement.row == win_info.topline-1 then
         local screen_win = win_info.winrow
         local topfill = vim.fn.winsaveview().topfill
-        local visible_rows = topfill - screen_win - placement.extra_padding
+        local visible_rows = topfill - screen_win - placement.extra_padding  -- placement.y_padding
         if visible_rows > 0 then
             y_offset = (keys["rows"] - visible_rows) * cs.y
             keys["rows"] = visible_rows
 	else return nil end
+	placement.y_padding = 0
     end
 
 
@@ -54,7 +56,7 @@ function image_placement:new (placement, keys)
     if placement.row == win_info.botline then
         local screen_row = utils.buf_screenpos(placement.row, 0, placement.win, buf)
         local screen_winbot = win_info.winrow+win_info.height
-        local visible_rows = screen_winbot-screen_row
+        local visible_rows = screen_winbot-screen_row - placement.y_padding
         if visible_rows > 0 and visible_rows < keys["rows"] then
             keys["rows"] = visible_rows
             keys["height"] = visible_rows * cs.y
@@ -67,7 +69,7 @@ function image_placement:new (placement, keys)
     placement.display_keys = keys
 
     local row, col = utils.buf_screenpos(placement.row, placement.col, placement.win, buf)
-    terminal.move_cursor(row, col)
+    terminal.move_cursor(row + placement.y_padding, col)
     terminal.send_graphics_command(keys, nil, true)
     terminal.restore_cursor()
     return placement
@@ -120,7 +122,7 @@ function image_handler:update_placements()
 	-- gather extmarks (placeholders) in window
         local win_info = vim.fn.getwininfo(win)[1]
         local extmarks = vim.api.nvim_buf_get_extmarks(win_info.bufnr,
-            vim.g.nviz_extmark_ns,
+            Settings.extmark_ns,
 	    {0, 0},
             {-1, -1},
         {})
@@ -135,150 +137,6 @@ function image_handler:update_placements()
     end
 end
 
-
-local image_placeholder = {
-    buf = nil,
-    cols = nil,
-    rows = nil,
-    img_src = nil,
-    id = nil,
-    win_placements = nil,
-    visible = false,
-    extra_padding = nil,
-}
-
-function image_placeholder:remove_placements()
-    for win, _ in pairs(self.win_placements) do
-	self:remove_win_placement(win)
-    end
-end
-
-function image_placeholder:remove_win_placement(win)
-    if self.win_placements[win] then
-        -- remove placements from kitty
-        self.win_placements[win]:remove()
-        -- remove placements from placeholder
-        table.remove(self.win_placements, win)
-    end
-end
-
-function image_placeholder:update_win_placement(win)
-    if self.visible then
-        -- add placement to placeholder
-        local placement_id = ''
-        if self.win_placements[win] then
-            placement_id = self.win_placements[win].display_keys.placement_id
-        else
-            placement_id = ImageStore.images[self.img_src.image_id]:get_placement_id()
-        end
-
-        local placement = image_placement:new({
-                win = win,
-                row = self.img_src.start_row,
-		extra_padding = self.extra_padding,
-                col = 0
-        }, {
-                image_id = self.img_src.image_id,
-                placement_id = placement_id
-        })
-        if placement then
-            self.win_placements[win] = placement
-            -- return placement id
-            return self.win_placements[win].placement_id
-        end
-    end
-    return self:remove_win_placement(win)
-end
-
-function image_placeholder:new (p)
-  setmetatable(p, self)
-  self.__index = self
-  vim.api.nvim_buf_set_extmark(p.buf, vim.g.nviz_extmark_ns, p.img_src.start_row-1, p.img_src.start_col, {
-      id = p.id,
-      sign_text = HiddenSign
---      end_row = p.img_src.end_row-1,
---      end_col = p.img_src.end_col
-  })
-  p.win_placements = {}
-  return p
-end
-
-function image_placeholder:unmark()
-  vim.api.nvim_buf_del_extmark(self.buf, vim.g.nviz_extmark_ns, self.id)
-end
-
-function image_placeholder:show()
-    self:reload_position()
-    if not self.img_src.image_id then self:load_image() end
-    if vim.api.nvim_buf_is_valid(self.buf) then
-        -- set padding block
-        local filler = {}
-        for _=0,self.rows-1 do
-            filler[#filler+1] = {{' ', nil}}
-        end
-	-- add caption
-	if self.img_src.caption then
-            filler[#filler+1] = {{' ', nil}}
-	    local centered = utils.string_center(self.img_src.caption, self.cols, 4)
-	    for _, row in ipairs(centered) do
-                filler[#filler+1] = {{row, nil}}
-	    end
-        end
-        -- apply padding to marked row -1
-	local extmark = {
-	    id = self.id,
-            virt_lines = filler,
-            sign_text = DisplayedSign
-            --end_col = self.img_src.end_col
-	}
---        if self.img_src.end_row then extmark.end_row = self.img_src.end_row-1 end
-        vim.api.nvim_buf_set_extmark(self.buf, vim.g.nviz_extmark_ns, self.img_src.start_row-1, self.img_src.start_col, extmark)
-        self.visible = true
-        self.extra_padding = #filler - self.rows-1
-    end
-end
-
-function image_placeholder:reload_position()
-    local extmark =  vim.api.nvim_buf_get_extmark_by_id(self.buf, vim.g.nviz_extmark_ns, self.id, {details = true})
-    if self.id == 2 then
-        log.debug(self.img_src.start_row)
-        log.debug(extmark[1])
-    end
-    self.img_src.start_row = extmark[1]+1
-    self.img_src.start_col = extmark[2]
-    if self.id == 2 then
-        log.debug(self.img_src.start_row)
-    end
---    self.img_src.end_col = extmark[3].end_col
---    if extmark[3].end_row then self.img_src.end_row = extmark[3].end_row+1 end
-	--log.debug(self)
-end
-
-function image_placeholder:load_image()
-    self.img_src:load_image()
-    self.rows, self.cols = ImageStore.images[self.img_src.image_id].rows, ImageStore.images[self.img_src.image_id].cols
-end
-
-function image_placeholder:hide()
-    self:reload_position()
-    self:remove_placements()
-    if vim.api.nvim_buf_is_valid(self.buf) then
-        -- apply padding to marked row -1
-	local extmark = {
-	    id = self.id,
---            end_row = self.img_src.end_row-1,
---            end_col = 0,
-            virt_lines = nil,
-            sign_text = HiddenSign
-	}
-	--self:reload_position()
-        vim.api.nvim_buf_set_extmark(self.buf, vim.g.nviz_extmark_ns, self.img_src.start_row-1, self.img_src.start_col, extmark)
-        --vim.api.nvim_buf_set_extmark(self.buf, vim.g.nviz_extmark_ns, 3, 0, extmark)
---        error(vim.inspect(vim.api.nvim_buf_get_extmark_by_id(self.buf, vim.g.nviz_extmark_ns, extmark.id, {details = true})))
-    end
-    self.extra_padding = nil
-    self.visible = false
-end
 
 function image_handler:hide_placeholder(buf, row)
     for _, placeholder in pairs(self.bufs[buf].placeholders) do
@@ -312,7 +170,7 @@ function image_handler:remove_placeholder(buf, id)
 end
 
 function image_handler:get_marks(buf, top, bot)
-    local marks, existing_marks = pcall(function () return vim.api.nvim_buf_get_extmarks(buf, vim.g.nviz_extmark_ns, {top, 0}, {bot, -1}, {})end)
+    local marks, existing_marks = pcall(function () return vim.api.nvim_buf_get_extmarks(buf, Settings.extmark_ns, {top, 0}, {bot, -1}, {})end)
     if marks then return existing_marks else return {} end
 end
 
@@ -322,7 +180,7 @@ function image_handler:add_placeholder(img_source)
 
     local extmarks = vim.api.nvim_buf_get_extmarks(
         img_source.buf,
-        vim.g.nviz_extmark_ns,
+        Settings.extmark_ns,
 	{img_source.start_row-1, img_source.start_col},
         {img_source.end_row, img_source.end_col},
 	{details = true}

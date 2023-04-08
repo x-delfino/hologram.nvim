@@ -1,4 +1,5 @@
 local terminal = require('nviz.core.terminal')
+--local log = require('nviz.utils.log')
 local utils = {}
 
 
@@ -68,9 +69,10 @@ function utils.filler_above(row, win, buf)
     if row <= top then
         return 0
     else
+--	log.debug(Settings)
         local filler = vim.fn.winsaveview().topfill
         local exts = vim.api.nvim_buf_get_extmarks(buf,
-            vim.g.nviz_extmark_ns,
+            Settings.extmark_ns,
             {top-1, 0},
             {row-1, -1},
             {details=true}
@@ -89,6 +91,62 @@ function utils.tbl_compare(t1, t2)
         if t2[k] ~= v then return false end
     end
     return true
+end
+
+-- big endian
+function utils.bytes2int(bufp, little_endian)
+    if little_endian then
+	local big_end = {}
+	for i=#bufp, 1, -1 do
+	    big_end[#big_end+1] = bufp[i]
+        end
+	bufp = big_end
+    end
+    local bor, lsh = bit.bor, bit.lshift
+    return bor(lsh(bufp[1],24), lsh(bufp[2],16), lsh(bufp[3],8), bufp[4])
+end
+
+function utils.string_to_bytes(str)
+    local bytes = {}
+    for i=1,#str,1 do
+        bytes[i] = str:byte(i)
+    end
+    return bytes
+end
+
+function utils.get_chunked(data, chunk_size, start, end_char)
+    local type = type(data)
+    end_char = end_char or #data
+    start = start or 1
+    local chunks = {}
+    local cap = chunk_size
+    for i = start+1,end_char,chunk_size do
+    	if ((#data - i) + 1) < chunk_size then
+	    cap = (#data - i) + 1
+        end
+--        local chunk = str:sub(i, i + cap - 1):gsub('%s', '') -- the gsub segfaulted
+        local chunk = nil
+        if type == "string" then
+            chunk = data:sub(i-1, i + cap - 1)
+	else
+	    chunk = {}
+	    for ci=i,i+cap-1,1 do
+		chunk[#chunk+1] = data[ci]
+	    end
+	end
+        if #chunk > 0 then
+            table.insert(chunks, chunk)
+        end
+    end
+    return chunks
+end
+
+function utils.invert_table(table)
+   local inverted={}
+   for k,v in pairs(table) do
+     inverted[v]=k
+   end
+   return inverted
 end
 
 return utils

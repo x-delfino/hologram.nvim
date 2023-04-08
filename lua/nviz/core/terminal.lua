@@ -57,14 +57,6 @@ local CTRL_KEYS = {
     -- TODO: Animation
 }
 
-function terminal._table_invert(table)
-   local inverted={}
-   for k,v in pairs(table) do
-     inverted[v]=k
-   end
-   return inverted
-end
-
 
 function terminal._parse_graphics_response(resp)
     if resp:match(START_CODE .. '.*' .. END_CODE) then

@@ -1,3 +1,5 @@
+local log = require('nviz.utils.log')
+
 local CTRL_KEYS = {
     general = {
         action = 'a',
@@ -53,6 +55,7 @@ end
 function command_keys:serialize()
     local serialized = ''
     for _, schema in pairs({ CTRL_KEYS.general, self.schema}) do
+	    log.debug(self)
         for k, v in pairs(schema) do
             if self[k] ~= nil then
                 serialized = serialized..v..'='..self[k]..','
@@ -81,7 +84,7 @@ local transmit_keys = command_keys:new{
 local display_keys = command_keys:new{
     schema = CTRL_KEYS.display,
     action = 'p',
-    quiet = 2,
+    quiet = 1,
     placement_id = nil,
     image_id = nil,
     x_offset = nil,
