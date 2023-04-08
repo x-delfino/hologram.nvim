@@ -55,7 +55,6 @@ end
 function command_keys:serialize()
     local serialized = ''
     for _, schema in pairs({ CTRL_KEYS.general, self.schema}) do
-	    log.debug(self)
         for k, v in pairs(schema) do
             if self[k] ~= nil then
                 serialized = serialized..v..'='..self[k]..','

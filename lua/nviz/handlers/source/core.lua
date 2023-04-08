@@ -115,7 +115,6 @@ end
 
 function source_handler:compute_hash(img_source)
     local lines = vim.api.nvim_buf_get_lines(img_source.buf, img_source.start_row-1, img_source.end_row, false)
-    log.debug(img_source.start_col)
     lines[1] = lines[1]:sub(img_source.start_col, -1)
     lines[#lines] = lines[#lines]:sub(1, img_source.end_col)
     local content = table.concat(lines)

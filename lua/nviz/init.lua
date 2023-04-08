@@ -9,6 +9,8 @@ local remote = require('nviz.utils.remote')
 local png = require('nviz.handlers.image.png')
 local core_handler = require('nviz.handlers.core')
 local md_source_handler = require('nviz.handlers.source.markdown')
+local ts_md_source_handler = require('nviz.handlers.source.markdown-ts')
+-- local d2_source_handler = require('nviz.handlers.source.d2')
 local inline_holder_handler = require('nviz.handlers.holder.inline')
 local float_holder_handler = require('nviz.handlers.holder.float')
 local png_image_handler = require('nviz.handlers.image.png')
@@ -38,8 +40,10 @@ function nviz.setup(opts)
     state.update_cell_size()
     vim.api.nvim_create_autocmd({'BufRead'}, {
 	callback = function(ev)
+            ts_md_source_handler.init()
 	    CoreHandler:add_buffer_handler(ev.buf)
             CoreHandler:add_source_handler(ev.buf, md_source_handler)
+--            CoreHandler:add_source_handler(ev.buf, d2_source_handler)
 --	    CoreHandler:add_holder_handler(ev.buf, inline_holder_handler)
 	    CoreHandler:add_holder_handler(ev.buf, float_holder_handler)
 	    CoreHandler:gather_and_load_sources(ev.buf, 0, -1)
@@ -50,29 +54,29 @@ function nviz.setup(opts)
         end
     })
     local stored_source = nil
-    vim.api.nvim_create_autocmd({'CursorMoved', 'CursorHoldI'}, {
-	callback = function(ev)
-            local win = vim.api.nvim_tabpage_get_win(0)
-	    local cursor = vim.api.nvim_win_get_cursor(win)
-	    local buffer_handler = CoreHandler.buffer_handlers[ev.buf]
---	    CoreHandler:win_hide_handler_holders(win, 'float')
-	    local matched_source = buffer_handler:find_source_block_match({
-		    start_row=cursor[1],
-		    start_col=cursor[2],
-	    })
-
-	    if matched_source ~= stored_source and stored_source ~= nil then
-	        local holder = buffer_handler:get_holder_by_source_id(stored_source.source_id)
-    	        CoreHandler:win_hide_holder_by_id(win, holder.holder_id)
-	    end
-
-	    if matched_source then
-	        local holder = buffer_handler:get_holder_by_source_id(matched_source.source_id)
-	        CoreHandler:win_show_holder_image(win, holder.holder_id)
-		stored_source = matched_source
-	    end
-        end
-    })
+--    vim.api.nvim_create_autocmd({'CursorMoved', 'CursorHoldI'}, {
+--	callback = function(ev)
+--            local win = vim.api.nvim_tabpage_get_win(0)
+--	    local cursor = vim.api.nvim_win_get_cursor(win)
+--	    local buffer_handler = CoreHandler.buffer_handlers[ev.buf]
+----	    CoreHandler:win_hide_handler_holders(win, 'float')
+--	    local matched_source = buffer_handler:find_source_block_match({
+--		    start_row=cursor[1],
+--		    start_col=cursor[2],
+--	    })
+--
+--	    if matched_source ~= stored_source and stored_source ~= nil then
+--	        local holder = buffer_handler:get_holder_by_source_id(stored_source.source_id)
+--    	        CoreHandler:win_hide_holder_by_id(win, holder.holder_id)
+--	    end
+--
+--	    if matched_source then
+--	        local holder = buffer_handler:get_holder_by_source_id(matched_source.source_id)
+--	        CoreHandler:win_show_holder_image(win, holder.holder_id)
+--		stored_source = matched_source
+--	    end
+--        end
+--    })
 end
 
     -- if Settings.auto_display == true then

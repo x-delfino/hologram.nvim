@@ -70,3 +70,25 @@ vim.api.nvim_create_user_command('RenderImages',
   end,
   {}
 )
+
+
+
+---- new
+
+vim.api.nvim_create_user_command('NvizHideImage',
+  function(opts)
+  end,
+  { nargs='*' }
+)
+
+vim.api.nvim_create_user_command('NvizShowImage',
+  function(opts)
+  end,
+  { nargs='*' }
+)
+
+vim.api.nvim_create_user_command('NvizSet',
+  function(opts)
+  end,
+  { nargs='*' }
+)
