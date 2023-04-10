@@ -3,10 +3,9 @@ local utils = require('nviz.utils.utils')
 local ESC_CODE = '\x1b'
 
 local placement = {
-    win = nil,
-    holder_id = nil,
+    win_holder = nil,
+    holder = nil,
     placement_id = nil,
-    image_id = nil
 }
 
 function placement:new(p)
