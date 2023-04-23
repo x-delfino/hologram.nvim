@@ -3,10 +3,11 @@ local log = require('nviz.utils.log')
 local fs = {}
 
 function fs.init_tmp_dir()
-    local cache_dir = vim.loop.fs_stat(Settings.cache_dir)
+    local cache_dir = vim.loop.fs_stat(vim.g.nviz_cache_dir)
     if not cache_dir then
-        vim.loop.fs_mkdir(Settings.cache_dir, 16832)
+        vim.loop.fs_mkdir(vim.g.nviz_cache_dir, 16832)
     end
+    return vim.g.nviz_cache_dir
 end
 
 function fs.rm_tmp_dir()
@@ -31,8 +32,16 @@ function fs.rm_dir(path)
 end
 
 function fs.write_tmp_file(template, data)
-    local fd, fn = assert(vim.loop.fs_mkstemp(template))
+    local tmp_file = fs.get_tmp_file(template)
+    local fd = assert(vim.loop.fs_open(tmp_file, "w", 438))
     vim.loop.fs_write(fd, data)
+    assert(vim.loop.fs_close(fd))
+    return tmp_file
+end
+
+function fs.get_tmp_file(template)
+    local cache_dir = fs.init_tmp_dir()
+    local fd, fn = assert(vim.loop.fs_mkstemp(cache_dir .. template))
     assert(vim.loop.fs_close(fd))
     return fn
 end

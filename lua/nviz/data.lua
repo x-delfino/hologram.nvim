@@ -1,5 +1,5 @@
 local data_processor = {
-    name = nil,
+    data_type = nil,
     check_valid_data = nil,
     get_data = nil,
     init_data = nil,

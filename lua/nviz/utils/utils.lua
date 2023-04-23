@@ -1,12 +1,20 @@
 --local log = require('nviz.utils.log')
 local utils = {}
+local log = require'nviz.utils.log'
 
+function utils.round(num)
+    return math.floor(num+0.5)
+end
 
---http://www.computercraft.info/forums2/index.php?/topic/15790-modifying-a-word-wrapping-function/
+-- adapted from http://www.computercraft.info/forums2/index.php?/topic/15790-modifying-a-word-wrapping-function/page__view__findpost__p__197261
 function utils.split_words(lines, limit)
+	if lines[#lines-1] and #lines[#lines-1] < limit + 2 then
+	    lines[#lines-1] = lines[#lines-1] .. ' ' .. lines[#lines]
+	    table.remove(lines, #lines)
+	end
         while #lines[#lines] > limit do
-                lines[#lines+1] = lines[#lines]:sub(limit+1)
-                lines[#lines-1] = lines[#lines-1]:sub(1,limit)
+                lines[#lines+1] = lines[#lines]:sub(limit)
+                lines[#lines-1] = lines[#lines-1]:sub(1,limit-1) .. "-"
         end
 end
 
@@ -33,18 +41,20 @@ function utils.string_wrap(str, limit)
         return lines
 end
 
-function utils.string_center(str, limit, padding)
-     padding = padding or 4
-     local row_chars = limit - padding
-     local centered = {}
-     local wrapped = utils.string_wrap(str, row_chars)
-     for i, row in ipairs(wrapped) do
-	 local line_padding = row_chars - #row
-	 local side_padding = line_padding/2 + padding/2
-	 local format_string = string.format("%%%ds%%%ds%%%ds", side_padding, #row, side_padding)
-         centered[i] = string.format(format_string, "", row, "")
-     end
-     return centered
+function utils.string_center(str, limit, lpad, rpad)
+    lpad = lpad or 0
+    rpad = rpad or lpad
+    local row_chars = limit - (lpad + rpad)
+    local centered = {}
+    local wrapped = utils.string_wrap(str, row_chars)
+    for i, row in ipairs(wrapped) do
+        local excess = row_chars - #row
+	local line_lpad = lpad + math.ceil(excess/2)
+	local line_rpad = limit - #row - line_lpad
+        local format_string = string.format("%%%ds%%%ds%%%ds", line_lpad, #row, line_rpad)
+        centered[i] = string.format(format_string, "", row, "")
+    end
+    return centered
 end
 
 
@@ -71,7 +81,7 @@ function utils.filler_above(row, win, buf)
 --	log.debug(Settings)
         local filler = vim.fn.winsaveview().topfill
         local exts = vim.api.nvim_buf_get_extmarks(buf,
-            Settings.extmark_ns,
+	    vim.g.nviz_ns,
             {top-1, 0},
             {row-1, -1},
             {details=true}

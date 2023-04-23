@@ -1,5 +1,7 @@
+local log = require'nviz.utils.log'
+
 local image_processor = {
-    name = nil,
+    image_type = nil,
     check_magic_bytes = nil,
     get_dimensions = nil,
 }

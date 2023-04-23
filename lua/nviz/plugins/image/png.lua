@@ -1,9 +1,9 @@
-local image_processor = require('nviz.image.core')
+local image_processor = require('nviz.image')
 local utils = require('nviz.utils.utils')
 local log = require('nviz.utils.log')
 
 local png_image_processor = image_processor:new{
-    name = 'png',
+    image_type = 'png',
     check_magic_bytes = function(bytes)
         return bytes[1]==137 and bytes[2]==80
             and bytes[3]==78 and bytes[4]==71
